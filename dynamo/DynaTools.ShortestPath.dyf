@@ -1,0 +1,312 @@
+<Workspace Version="1.2.1.3083" X="698.155237969901" Y="172.880169808853" zoom="1.88868388130206" Name="DynaTools.ShortestPath" Description="Find the shortest path between two elements" ID="3ad5242d-dadb-4071-aa9d-e12ad7c529a8" Category="DynaTools.ElementTools">
+  <NamespaceResolutionMap>
+    <ClassMap partialName="Elements.Element" resolvedName="Revit.Elements.Element" assemblyName="RevitNodes.dll" />
+    <ClassMap partialName="List" resolvedName="DSCore.List" assemblyName="DSCoreNodes.dll" />
+  </NamespaceResolutionMap>
+  <Elements>
+    <PythonNodeModels.PythonNode guid="ff9a203d-4e2f-4562-b7f4-2f8f76ba43dd" type="PythonNodeModels.PythonNode" nickname="Python Script" x="250" y="30.5716719873288" isVisible="true" isUpstreamVisible="true" lacing="Disabled" isSelectedInput="False" IsFrozen="false" isPinned="false" inputcount="1">
+      <PortInfo index="0" default="False" />
+      <Script># Copyright Cesare Caoduro 2017
+# Mail: cesare.caoduro@gmail.com
+# Twitter: @CesareCaoduro
+
+import clr
+import math
+
+clr.AddReference("RevitServices")
+import RevitServices
+from RevitServices.Persistence import DocumentManager
+from RevitServices.Transactions import TransactionManager
+doc = DocumentManager.Instance.CurrentDBDocument
+
+clr.AddReference("RevitAPI")
+import Autodesk
+from Autodesk.Revit.DB import *
+
+clr.AddReference("RevitNodes")
+import Revit
+clr.ImportExtensions(Revit.Elements)
+clr.ImportExtensions(Revit.GeometryConversion)
+
+clr.AddReference('DSCoreNodes')
+from DSCore import *
+
+#The inputs to this node will be stored as a list in the IN variables.
+if isinstance(IN[0], list):
+	elements = UnwrapElement(IN[0])
+	toggle = 0
+else:
+	toggle = 1
+	elements = [UnwrapElement(IN[0])]
+	
+p = []
+dir = []
+rep = []
+ref = []
+
+elements = List.Flatten(elements,2)
+
+for e in elements:
+	refs = []
+
+	try:
+		connectors = e.MEPModel.ConnectorManager.Connectors
+	except:
+		connectors = e.ConnectorManager.Connectors
+	for conn in connectors:
+		for c in conn.AllRefs:
+			refs.append(c.Owner)
+	ref.append(refs)
+
+#Assign your output to the OUT variable.
+if toggle:
+	OUT = refs
+else:
+	OUT = ref</Script>
+    </PythonNodeModels.PythonNode>
+    <PythonNodeModels.PythonNode guid="03addf28-9460-49b7-823c-9abc2f1f6890" type="PythonNodeModels.PythonNode" nickname="Python Script" x="494.558408399589" y="34.6122761864191" isVisible="true" isUpstreamVisible="true" lacing="Disabled" isSelectedInput="False" IsFrozen="false" isPinned="false" inputcount="2">
+      <PortInfo index="0" default="False" />
+      <PortInfo index="1" default="False" />
+      <Script>import clr
+import math
+
+clr.AddReference('DSCoreNodes')
+from DSCore import *
+
+clr.AddReference('ProtoGeometry')
+from Autodesk.DesignScript.Geometry import *
+#The inputs to this node will be stored as a list in the IN variables.
+
+clr.AddReference('DSCoreNodes')
+from DSCore import *
+
+elements = List.Flatten(IN[0],2)
+connected = IN[1]
+edges = []
+k = 0
+
+for e in elements:
+	edge = []
+	conn = connected[k]
+	for c in conn:
+		if (e!=c):
+			edge.append({e,c})
+	k+=1
+	edges.append(edge)
+		
+
+OUT = List.Flatten(edges,1)</Script>
+    </PythonNodeModels.PythonNode>
+    <PythonNodeModels.PythonNode guid="e3b8894f-d24e-4890-a96b-b92807281f3d" type="PythonNodeModels.PythonNode" nickname="Python Script" x="749.137968072832" y="74.4243277879467" isVisible="true" isUpstreamVisible="true" lacing="Disabled" isSelectedInput="False" IsFrozen="false" isPinned="true" inputcount="3">
+      <PortInfo index="0" default="False" />
+      <PortInfo index="1" default="False" />
+      <PortInfo index="2" default="False" />
+      <Script>import clr
+clr.AddReference('ProtoGeometry')
+from Autodesk.DesignScript.Geometry import *
+
+import sys
+sys.path.append(r'C:\Program Files (x86)\IronPython 2.7\Lib')
+
+# Import RevitAPI
+clr.AddReference("RevitAPI")
+import Autodesk
+from Autodesk.Revit.DB import *
+
+# Import ToDSType(bool) extension method
+clr.AddReference("RevitNodes")
+import Revit
+clr.ImportExtensions(Revit.Elements)
+
+from collections import defaultdict
+
+class Graph():
+    def __init__(self):
+        """
+        self.edges is a dict of all possible next nodes
+        e.g. {'X': ['A', 'B', 'C', 'E'], ...}
+        self.weights has all the weights between two nodes,
+        with the two nodes as a tuple as the key
+        e.g. {('X', 'A'): 7, ('X', 'B'): 2, ...}
+        """
+        self.edges = defaultdict(list)
+        self.weights = {}
+    
+    def add_edge(self, from_node, to_node, weight):
+        # Note: assumes edges are bi-directional
+        self.edges[from_node].append(to_node)
+        self.edges[to_node].append(from_node)
+        self.weights[(from_node, to_node)] = weight
+        self.weights[(to_node, from_node)] = weight
+
+def dijsktra(graph, initial, end):
+    # shortest paths is a dict of nodes
+    # whose value is a tuple of (previous node, weight)
+    shortest_paths = {initial: (None, 0)}
+    current_node = initial
+    visited = set()
+    
+    while current_node != end:
+        visited.add(current_node)
+        destinations = graph.edges[current_node]
+        weight_to_current_node = shortest_paths[current_node][1]
+
+        for next_node in destinations:
+            weight = graph.weights[(current_node, next_node)] + weight_to_current_node
+            if next_node not in shortest_paths:
+                shortest_paths[next_node] = (current_node, weight)
+            else:
+                current_shortest_weight = shortest_paths[next_node][1]
+                if current_shortest_weight &gt; weight:
+                    shortest_paths[next_node] = (current_node, weight)
+        
+        next_destinations = {node: shortest_paths[node] for node in shortest_paths if node not in visited}
+        if not next_destinations:
+            return "Route Not Possible"
+        # next node is the destination with the lowest weight
+        current_node = min(next_destinations, key=lambda k: next_destinations[k][1])
+    
+    # Work back through destinations in shortest path
+    path = []
+    while current_node is not None:
+        path.append(current_node)
+        next_node = shortest_paths[current_node][0]
+        current_node = next_node
+    # Reverse path
+    path = path[::-1]
+    return path
+
+
+
+start = IN[0]
+end = IN[1]
+edges = IN[2]
+
+graph = Graph()
+
+for edge in edges:
+	graph.add_edge(edge[0],edge[1],1)
+
+
+#Assign your output to the OUT variable.
+OUT = dijsktra(graph, start, end)</Script>
+    </PythonNodeModels.PythonNode>
+    <Dynamo.Graph.Nodes.CustomNodes.Symbol guid="c546f1c9-88c5-4731-b0b6-e45c6ed22527" type="Dynamo.Graph.Nodes.CustomNodes.Symbol" nickname="Input" x="-251.900298619085" y="211.179337746234" isVisible="true" isUpstreamVisible="true" lacing="Disabled" isSelectedInput="True" IsFrozen="false" isPinned="false">
+      <Symbol value="Start : Elements.Element" />
+    </Dynamo.Graph.Nodes.CustomNodes.Symbol>
+    <Dynamo.Graph.Nodes.CustomNodes.Symbol guid="6c06a4a9-9455-4554-a1ff-5cf823238e61" type="Dynamo.Graph.Nodes.CustomNodes.Symbol" nickname="Input" x="-252.790157569695" y="282.569940177715" isVisible="true" isUpstreamVisible="true" lacing="Disabled" isSelectedInput="True" IsFrozen="false" isPinned="false">
+      <Symbol value="End : Elements.Element" />
+    </Dynamo.Graph.Nodes.CustomNodes.Symbol>
+    <Dynamo.Graph.Nodes.CustomNodes.Output guid="b51bdd18-dbaf-41ad-869d-11fd41a29082" type="Dynamo.Graph.Nodes.CustomNodes.Output" nickname="Output" x="931.971851973681" y="42.6910695085147" isVisible="true" isUpstreamVisible="true" lacing="Disabled" isSelectedInput="False" IsFrozen="false" isPinned="false">
+      <PortInfo index="0" default="False" />
+      <Symbol value="ShortestPath: List" />
+    </Dynamo.Graph.Nodes.CustomNodes.Output>
+    <PythonNodeModels.PythonNode guid="54a96cef-1ddd-43e3-834e-a6919d396bdb" type="PythonNodeModels.PythonNode" nickname="Python Script" x="121.613556973722" y="159.367716581308" isVisible="true" isUpstreamVisible="true" lacing="Disabled" isSelectedInput="False" IsFrozen="false" isPinned="true" inputcount="3">
+      <PortInfo index="0" default="False" />
+      <PortInfo index="1" default="False" />
+      <PortInfo index="2" default="False" />
+      <Script># Copyright Cesare Caoduro 2017
+# Mail: cesare.caoduro@gmail.com
+# Twitter: @CesareCaoduro
+
+import clr
+import math
+
+clr.AddReference('ProtoGeometry')
+from Autodesk.DesignScript.Geometry import *
+
+clr.AddReference('DSCoreNodes')
+from DSCore import *
+
+def pow2(n):
+	return	math.pow(n,2)
+
+def distance(p1,p2):
+	return math.fabs(math.sqrt(pow2(p2.X-p1.X)+pow2(p2.Y-p1.Y)+pow2(p2.Z-p1.Z)))
+
+#The inputs to this node will be stored as a list in the IN variables.
+
+elements = List.Flatten(IN[0],2)
+start = IN[1]
+startLoc = start.GetLocation()
+end = IN[2]
+endLoc = end.GetLocation()
+
+points = []
+pointElements = []
+
+for e in elements:
+	eLoc = e.GetLocation()
+	#startEndPoint.append(eLoc)
+	try:
+		s1 = Curve.PointAtParameter(eLoc,0)
+		points.append(s1)
+		pointElements.append(e)
+		s2 = Curve.PointAtParameter(eLoc,1)
+		points.append(s2)
+		pointElements.append(e)
+	except:
+		points.append(eLoc)
+		pointElements.append(e)
+
+d0S = 1000000000
+d0E = 1000000000
+minS, minE = [],[]
+sEl, eEl = [],[]
+
+for p,e in zip(points,pointElements):
+	dS = distance(p,startLoc)
+	dE = distance(p,endLoc)
+	if (dS&lt;d0S):
+		minS = p
+		sEl = e
+		d0S = dS
+	if (dE&lt;d0E):
+		minE = p
+		eEl = e
+		d0E = dE
+
+OUT = sEl,eEl
+</Script>
+    </PythonNodeModels.PythonNode>
+    <Dynamo.Graph.Nodes.CodeBlockNodeModel guid="37685dce-1714-4d8f-9df8-b199b0e23d74" type="Dynamo.Graph.Nodes.CodeBlockNodeModel" nickname="Code Block" x="282.280512679846" y="156.232765840723" isVisible="true" isUpstreamVisible="true" lacing="Disabled" isSelectedInput="False" IsFrozen="false" isPinned="false" CodeText="lst[0];&#xA;lst[1];" ShouldFocus="false">
+      <PortInfo index="0" default="False" />
+    </Dynamo.Graph.Nodes.CodeBlockNodeModel>
+    <Dynamo.Graph.Nodes.CustomNodes.Output guid="bd76958c-37df-46dd-b868-ad56acf551bb" type="Dynamo.Graph.Nodes.CustomNodes.Output" nickname="Output" x="1162.18242321" y="144.139795816045" isVisible="true" isUpstreamVisible="true" lacing="Disabled" isSelectedInput="False" IsFrozen="false" isPinned="false">
+      <PortInfo index="0" default="False" />
+      <Symbol value="ShortestPathLocations: List" />
+    </Dynamo.Graph.Nodes.CustomNodes.Output>
+    <Dynamo.Graph.Nodes.ZeroTouch.DSFunction guid="916976c9-c352-485b-9d3e-ecc375be8ff9" type="Dynamo.Graph.Nodes.ZeroTouch.DSFunction" nickname="Element.GetLocation" x="911.920119005798" y="122.62567196719" isVisible="true" isUpstreamVisible="true" lacing="Shortest" isSelectedInput="False" IsFrozen="false" isPinned="false" assembly="RevitNodes.dll" function="Revit.Elements.Element.GetLocation">
+      <PortInfo index="0" default="False" />
+    </Dynamo.Graph.Nodes.ZeroTouch.DSFunction>
+    <Dynamo.Graph.Nodes.CustomNodes.Symbol guid="4b037caa-7514-4b4f-85cb-5d185e9c79a5" type="Dynamo.Graph.Nodes.CustomNodes.Symbol" nickname="Input" x="-171.630224188936" y="66.7765693559053" isVisible="true" isUpstreamVisible="true" lacing="Disabled" isSelectedInput="True" IsFrozen="false" isPinned="false">
+      <Symbol value="" />
+    </Dynamo.Graph.Nodes.CustomNodes.Symbol>
+  </Elements>
+  <Connectors>
+    <Dynamo.Graph.Connectors.ConnectorModel start="ff9a203d-4e2f-4562-b7f4-2f8f76ba43dd" start_index="0" end="03addf28-9460-49b7-823c-9abc2f1f6890" end_index="1" portType="0" />
+    <Dynamo.Graph.Connectors.ConnectorModel start="03addf28-9460-49b7-823c-9abc2f1f6890" start_index="0" end="e3b8894f-d24e-4890-a96b-b92807281f3d" end_index="2" portType="0" />
+    <Dynamo.Graph.Connectors.ConnectorModel start="e3b8894f-d24e-4890-a96b-b92807281f3d" start_index="0" end="b51bdd18-dbaf-41ad-869d-11fd41a29082" end_index="0" portType="0" />
+    <Dynamo.Graph.Connectors.ConnectorModel start="e3b8894f-d24e-4890-a96b-b92807281f3d" start_index="0" end="916976c9-c352-485b-9d3e-ecc375be8ff9" end_index="0" portType="0" />
+    <Dynamo.Graph.Connectors.ConnectorModel start="c546f1c9-88c5-4731-b0b6-e45c6ed22527" start_index="0" end="54a96cef-1ddd-43e3-834e-a6919d396bdb" end_index="1" portType="0" />
+    <Dynamo.Graph.Connectors.ConnectorModel start="6c06a4a9-9455-4554-a1ff-5cf823238e61" start_index="0" end="54a96cef-1ddd-43e3-834e-a6919d396bdb" end_index="2" portType="0" />
+    <Dynamo.Graph.Connectors.ConnectorModel start="54a96cef-1ddd-43e3-834e-a6919d396bdb" start_index="0" end="37685dce-1714-4d8f-9df8-b199b0e23d74" end_index="0" portType="0" />
+    <Dynamo.Graph.Connectors.ConnectorModel start="37685dce-1714-4d8f-9df8-b199b0e23d74" start_index="0" end="e3b8894f-d24e-4890-a96b-b92807281f3d" end_index="0" portType="0" />
+    <Dynamo.Graph.Connectors.ConnectorModel start="37685dce-1714-4d8f-9df8-b199b0e23d74" start_index="1" end="e3b8894f-d24e-4890-a96b-b92807281f3d" end_index="1" portType="0" />
+    <Dynamo.Graph.Connectors.ConnectorModel start="916976c9-c352-485b-9d3e-ecc375be8ff9" start_index="0" end="bd76958c-37df-46dd-b868-ad56acf551bb" end_index="0" portType="0" />
+    <Dynamo.Graph.Connectors.ConnectorModel start="4b037caa-7514-4b4f-85cb-5d185e9c79a5" start_index="0" end="54a96cef-1ddd-43e3-834e-a6919d396bdb" end_index="0" portType="0" />
+    <Dynamo.Graph.Connectors.ConnectorModel start="4b037caa-7514-4b4f-85cb-5d185e9c79a5" start_index="0" end="ff9a203d-4e2f-4562-b7f4-2f8f76ba43dd" end_index="0" portType="0" />
+    <Dynamo.Graph.Connectors.ConnectorModel start="4b037caa-7514-4b4f-85cb-5d185e9c79a5" start_index="0" end="03addf28-9460-49b7-823c-9abc2f1f6890" end_index="0" portType="0" />
+  </Connectors>
+  <Notes>
+    <Dynamo.Graph.Notes.NoteModel guid="9628d7b5-7775-456d-a864-e3a8ea9678a3" text="Find connection between elements" x="248.529368702097" y="-9.54992277986005" />
+    <Dynamo.Graph.Notes.NoteModel guid="7b9edb10-0606-45b5-a8e1-5dfead902428" text="Build relations graph" x="498.268112298558" y="-8.01828407372614" />
+    <Dynamo.Graph.Notes.NoteModel guid="49de04a1-820a-4a68-ae1b-47540d950a96" text="dijsktra" x="734.590449100698" y="-3.96029839464538" />
+    <Dynamo.Graph.Notes.NoteModel guid="54e238a9-7994-4f18-9ee7-9481c509b50b" text="Find closest elements" x="121.70184988218" y="124.823399956655" />
+  </Notes>
+  <Annotations />
+  <Presets />
+  <Cameras>
+    <Camera Name="Background Preview" eyeX="-21277.76953125" eyeY="19244.818359375" eyeZ="21948.55078125" lookX="22255.8046875" lookY="-22961.1796875" lookZ="-26817.369140625" upX="0.228862747550011" upY="0.933580458164215" upZ="-0.275770604610443" />
+  </Cameras>
+</Workspace>
